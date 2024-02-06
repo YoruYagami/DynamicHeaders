@@ -1,6 +1,6 @@
 from burp import IBurpExtender, ITab, IHttpListener
 from javax.swing import JPanel, JButton, JScrollPane, JTextArea, JComboBox, JOptionPane
-from java.awt import BorderLayout
+from java.awt import BorderLayout, Color
 
 class BurpExtender(IBurpExtender, ITab, IHttpListener):
     
@@ -17,7 +17,8 @@ class BurpExtender(IBurpExtender, ITab, IHttpListener):
         self.renameHeaderButton = JButton("Rename Headers", actionPerformed=self.renameHeaders)
         self.removeHeaderButton = JButton("Remove Headers", actionPerformed=self.removeHeaders)
         self.headerSelector = JComboBox(["Select a header set"])
-        self.applyButton = JButton("Apply Selected Header Set", actionPerformed=self.applySelectedHeaders)
+        self.applyButton = JButton("ON", actionPerformed=self.toggleApplyButton)
+        self.applyButton.setBackground(Color.BLUE)  # Set initial color to blue
         
         # Layout setup
         self.panel.setLayout(BorderLayout())
@@ -37,6 +38,7 @@ class BurpExtender(IBurpExtender, ITab, IHttpListener):
         # Storage for header configurations
         self.headerConfigurations = {}
         self.selectedHeaders = None
+        self.applyButtonState = False  # Initial state is OFF
 
     def getTabCaption(self):
         return "Dynamic Headers"
@@ -84,21 +86,25 @@ class BurpExtender(IBurpExtender, ITab, IHttpListener):
         else:
             JOptionPane.showMessageDialog(self.panel, "Please select a valid header set to remove.", "Error", JOptionPane.ERROR_MESSAGE)
 
-    def applySelectedHeaders(self, event):
-        selectedHeaderSetName = self.headerSelector.getSelectedItem()
-        if selectedHeaderSetName and selectedHeaderSetName != "Select a header set":
-            self.selectedHeaders = self.headerConfigurations[selectedHeaderSetName]
-            JOptionPane.showMessageDialog(self.panel, "Header set '{}' will now be applied to all requests.".format(selectedHeaderSetName))
+    def toggleApplyButton(self, event):
+        self.applyButtonState = not self.applyButtonState  # Toggle the state
+        if self.applyButtonState:
+            self.applyButton.setText("ON")
+            self.applyButton.setBackground(Color.BLUE)
         else:
-            JOptionPane.showMessageDialog(self.panel, "Please select a valid header set to apply.", "Error", JOptionPane.ERROR_MESSAGE)
+            self.applyButton.setText("OFF")
+            self.applyButton.setBackground(Color.WHITE)
 
     def processHttpMessage(self, toolFlag, messageIsRequest, messageInfo):
-        if messageIsRequest and self.selectedHeaders:
-            requestInfo = self._helpers.analyzeRequest(messageInfo)
-            headers = list(requestInfo.getHeaders())
-            # Remove headers that will be replaced by the ones added by the user
-            headers = [header for header in headers if not any(usrHeader.split(":")[0].strip() + ":" in header for usrHeader in self.selectedHeaders.split("\n"))]
-            # Add the headers from the textarea
-            headers.extend([h for h in self.selectedHeaders.split("\n") if h.strip() != ""])
-            # Reconstruct the request with the new headers
-            messageInfo.setRequest(self._helpers.buildHttpMessage(headers, messageInfo.getRequest()[requestInfo.getBodyOffset():]))
+        if messageIsRequest and self.applyButtonState:
+            selectedHeaderSetName = self.headerSelector.getSelectedItem()
+            if selectedHeaderSetName and selectedHeaderSetName != "Select a header set":
+                self.selectedHeaders = self.headerConfigurations[selectedHeaderSetName]
+                requestInfo = self._helpers.analyzeRequest(messageInfo)
+                headers = list(requestInfo.getHeaders())
+                # Remove headers that will be replaced by the ones added by the user
+                headers = [header for header in headers if not any(usrHeader.split(":")[0].strip() + ":" in header for usrHeader in self.selectedHeaders.split("\n"))]
+                # Add the headers from the textarea
+                headers.extend([h for h in self.selectedHeaders.split("\n") if h.strip() != ""])
+                # Reconstruct the request with the new headers
+                messageInfo.setRequest(self._helpers.buildHttpMessage(headers, messageInfo.getRequest()[requestInfo.getBodyOffset():]))
